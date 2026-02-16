@@ -39,7 +39,7 @@ def _parse_jwt_exp(token: str) -> float:
     # Add padding
     payload_b64 += "=" * (-len(payload_b64) % 4)
     payload = json.loads(base64.urlsafe_b64decode(payload_b64))
-    return float(payload["exp"])
+    return float(payload.get("exp") or payload["expirationTime"])
 
 
 async def _authenticate(client: httpx.AsyncClient) -> str:
@@ -121,7 +121,7 @@ async def levelplay_report(
         end_date: End date (YYYY-MM-DD).
         metrics: Comma-separated metrics (default: revenue,impressions,eCPM,activeUsers).
         breakdowns: Comma-separated breakdowns (default: date).
-        filters: Optional dict of filters (appKey, country, adFormat, adNetwork, platform, isBidder, mediationGroup, mediationAdUnitId).
+        filters: Optional dict of filters (appKey, country, adFormat, adNetwork, platform, isBidder, isLevelPlayMediation, abTest, mediationGroup, mediationAdUnitId).
         page: Page number for pagination.
         results_per_page: Results per page.
     """

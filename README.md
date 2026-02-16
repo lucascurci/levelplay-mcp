@@ -2,6 +2,10 @@
 
 MCP server wrapping the [LevelPlay](https://developers.is.com/) (ironSource/Unity) Monetization Reporting API. Built with [FastMCP](https://gofastmcp.com/).
 
+## API Documentation
+
+- [LevelPlay Reporting API](https://docs.unity.com/en-us/grow/levelplay/platform/api/reporting)
+
 ## Tools
 
 ### `levelplay-report`
@@ -14,7 +18,7 @@ Query the monetization reporting API.
 | `end_date` | Yes | — | End date (YYYY-MM-DD) |
 | `metrics` | No | `revenue,impressions,eCPM,activeUsers` | Comma-separated metrics |
 | `breakdowns` | No | `date` | Comma-separated breakdowns |
-| `filters` | No | — | Dict of filters (appKey, country, adFormat, adNetwork, platform, isBidder, mediationGroup, mediationAdUnitId) |
+| `filters` | No | — | Dict of filters (appKey, country, adFormat, adNetwork, platform, isBidder, isLevelPlayMediation, abTest, mediationGroup, mediationAdUnitId) |
 | `page` | No | — | Page number |
 | `results_per_page` | No | — | Results per page |
 
