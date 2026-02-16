@@ -61,6 +61,7 @@ LevelPlay MCP server from scratch. Single-file Python server wrapping the ironSo
 2. **Missing filters** — `isLevelPlayMediation` and `abTest` were missing from the tool docstring and README. Found by cross-referencing against the official API docs.
 3. **Dashboard URL** — First used `app.unity.com` (doesn't exist), then `platform.ironsrc.com` (root). Correct URL is `platform.ironsrc.com/platform/dashboard`.
 4. **`gh repo create --source`** — Failed silently, couldn't detect the git repo. Worked around by creating the repo separately and pushing manually.
+5. **`mcp.get_context()` doesn't exist** — Original code used `mcp.get_context().request_context["client"]` to access the shared httpx client inside tool functions. This crashed in production when Celeste called the tools: `AttributeError: 'FastMCP' object has no attribute 'get_context'`. The `FastMCP` class has no such method. The correct pattern is **Context parameter injection**: declare `ctx: Context = None` as a tool parameter, and FastMCP auto-injects a request-scoped Context object. Access lifespan data via `ctx.lifespan_context["client"]`. Fixed both tools, rebuilt Docker, all 8 tests still pass.
 
 ## Verification
 - Docker image builds cleanly
