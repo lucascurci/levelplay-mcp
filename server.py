@@ -4,11 +4,10 @@ import base64
 import json
 import os
 import time
-from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
-from fastmcp import Context, FastMCP
+from fastmcp import FastMCP
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -26,8 +25,18 @@ DEFAULT_METRICS = "revenue,impressions,eCPM,activeUsers"
 DEFAULT_BREAKDOWNS = "date"
 
 # ---------------------------------------------------------------------------
-# Auth — JWT cache
+# HTTP client & Auth — JWT cache
 # ---------------------------------------------------------------------------
+
+_client: httpx.AsyncClient | None = None
+
+
+def _get_client() -> httpx.AsyncClient:
+    """Return the shared httpx client, creating it on first use."""
+    global _client
+    if _client is None:
+        _client = httpx.AsyncClient(timeout=30)
+    return _client
 
 _jwt_token: str | None = None
 _jwt_expiry: float = 0.0
@@ -42,11 +51,11 @@ def _parse_jwt_exp(token: str) -> float:
     return float(payload.get("exp") or payload["expirationTime"])
 
 
-async def _authenticate(client: httpx.AsyncClient) -> str:
+async def _authenticate() -> str:
     """Call the auth endpoint and cache the JWT."""
     global _jwt_token, _jwt_expiry
 
-    resp = await client.get(
+    resp = await _get_client().get(
         AUTH_URL,
         headers={
             "secretkey": LEVELPLAY_SECRET_KEY,
@@ -61,25 +70,24 @@ async def _authenticate(client: httpx.AsyncClient) -> str:
     return token
 
 
-async def _get_token(client: httpx.AsyncClient) -> str:
+async def _get_token() -> str:
     """Return a valid JWT, refreshing if expired."""
     if _jwt_token and time.time() < _jwt_expiry:
         return _jwt_token
-    return await _authenticate(client)
+    return await _authenticate()
 
 
-async def _api_get(
-    client: httpx.AsyncClient, url: str, params: dict[str, Any] | None = None
-) -> Any:
+async def _api_get(url: str, params: dict[str, Any] | None = None) -> Any:
     """GET with bearer auth. Retries once on 401."""
-    token = await _get_token(client)
+    token = await _get_token()
+    client = _get_client()
 
     resp = await client.get(
         url, params=params, headers={"Authorization": f"Bearer {token}"}
     )
 
     if resp.status_code == 401:
-        token = await _authenticate(client)
+        token = await _authenticate()
         resp = await client.get(
             url, params=params, headers={"Authorization": f"Bearer {token}"}
         )
@@ -95,12 +103,6 @@ async def _api_get(
 # FastMCP server
 # ---------------------------------------------------------------------------
 
-@asynccontextmanager
-async def lifespan(server):
-    async with httpx.AsyncClient(timeout=30) as client:
-        yield {"client": client}
-
-
 mcp = FastMCP(
     "LevelPlay",
     instructions=(
@@ -110,7 +112,6 @@ mcp = FastMCP(
         "by date, app, country, ad format, ad network, and more. "
         "Dates are YYYY-MM-DD. Metrics and breakdowns are comma-separated strings."
     ),
-    lifespan=lifespan,
 )
 
 
@@ -123,7 +124,6 @@ async def levelplay_report(
     filters: dict[str, str] | None = None,
     page: int | None = None,
     results_per_page: int | None = None,
-    ctx: Context = None,
 ) -> dict:
     """Query the LevelPlay monetization reporting API.
 
@@ -136,8 +136,6 @@ async def levelplay_report(
         page: Page number for pagination.
         results_per_page: Results per page.
     """
-    client: httpx.AsyncClient = ctx.request_context.lifespan_context["client"]
-
     params: dict[str, Any] = {
         "startDate": start_date,
         "endDate": end_date,
@@ -154,14 +152,13 @@ async def levelplay_report(
     if results_per_page is not None:
         params["resultsPerPage"] = results_per_page
 
-    return await _api_get(client, REPORT_URL, params)
+    return await _api_get(REPORT_URL, params)
 
 
 @mcp.tool(name="levelplay-apps")
-async def levelplay_apps(ctx: Context = None) -> dict:
+async def levelplay_apps() -> dict:
     """List all apps on the LevelPlay account. Useful for discovering app keys."""
-    client: httpx.AsyncClient = ctx.request_context.lifespan_context["client"]
-    return await _api_get(client, APPS_URL)
+    return await _api_get(APPS_URL)
 
 
 # ---------------------------------------------------------------------------
