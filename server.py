@@ -95,7 +95,13 @@ async def _api_get(url: str, params: dict[str, Any] | None = None) -> Any:
     if resp.status_code == 429:
         return {"error": "Rate limited (429). LevelPlay allows 8000 requests/hour."}
 
-    resp.raise_for_status()
+    if resp.status_code >= 400:
+        try:
+            body = resp.json()
+        except Exception:
+            body = resp.text
+        return {"error": f"API returned {resp.status_code}", "details": body}
+
     return resp.json()
 
 
@@ -128,11 +134,24 @@ async def levelplay_report(
     """Query the LevelPlay monetization reporting API.
 
     Args:
-        start_date: Start date (YYYY-MM-DD).
-        end_date: End date (YYYY-MM-DD).
-        metrics: Comma-separated metrics (default: revenue,impressions,eCPM,activeUsers).
-        breakdowns: Comma-separated breakdowns (default: date).
-        filters: Optional dict of filters (appKey, country, adFormat, adNetwork, platform, isBidder, isLevelPlayMediation, abTest, mediationGroup, mediationAdUnitId).
+        start_date: Start date (YYYY-MM-DD). Must not be in the future.
+        end_date: End date (YYYY-MM-DD). Must not be in the future.
+        metrics: Comma-separated metrics. Available: revenue, impressions, eCPM, clicks,
+            clickThroughRate, sessions, engagedSessions, impressionPerEngagedSessions,
+            impressionsPerSession, activeUsers, revenuePerActiveUser, sessionsPerActiveUser,
+            impressionsPerActiveUser, engagedUsers, revenuePerEngagedUser,
+            impressionsPerEngagedUser, engagedUsersRate, appFills, appFillRate, useRate,
+            appRequests, completions, completionRateImpBased, revenuePerCompletion,
+            adSourceChecks, adSourceResponses, adSourceAvailabilityRate.
+        breakdowns: Comma-separated breakdowns. Available: date, week, month, app, platform,
+            adNetwork, isBidder, adFormat, instance, country, mediationGroup, mediationAdUnit,
+            segment, placement, osVersion, sdkVersion, appVersion, att, idfa, gaid, abTest,
+            isLevelPlayMediation, bannerSize.
+            NOTE: instance, segment, placement, bannerSize, idfa, gaid, att, appVersion,
+            sdkVersion, osVersion cannot be combined with each other.
+        filters: Optional dict to filter results. Keys: appKey, country, adFormat, adNetwork,
+            platform, isBidder, isLevelPlayMediation, abTest, mediationGroup,
+            mediationAdUnitId. Example: {"appKey": "1a2b3c", "platform": "iOS"}.
         page: Page number for pagination.
         results_per_page: Results per page.
     """
@@ -157,8 +176,16 @@ async def levelplay_report(
 
 @mcp.tool(name="levelplay-apps")
 async def levelplay_apps() -> dict:
-    """List all apps on the LevelPlay account. Useful for discovering app keys."""
-    return await _api_get(APPS_URL)
+    """List all apps on the LevelPlay account.
+
+    Returns a dict with an "apps" key containing a list of app objects.
+    Each app has: appKey, appName, appStatus, platform, bundleId, adUnits, networkList.
+    Use the appKey values as filters in levelplay-report.
+    """
+    result = await _api_get(APPS_URL)
+    if isinstance(result, list):
+        return {"apps": result}
+    return result
 
 
 # ---------------------------------------------------------------------------
