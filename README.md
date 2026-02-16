@@ -44,9 +44,9 @@ List all apps on the account. No parameters. Useful for discovering app keys.
 
 ### Getting your API credentials
 
-1. Log in to [Unity LevelPlay](https://app.unity.com/)
-2. Click the account icon at the bottom-left of the sidebar
-3. Go to **Account** > **API** tab
+1. Log in to the [LevelPlay dashboard](https://platform.ironsrc.com/platform/dashboard)
+2. Click the account icon at the bottom of the left sidebar, then click **Account**
+3. Select the **API** tab
 4. Copy your **Secret Key** and **Refresh Token**
 
 > You need Contributor or Administrator permissions to access the API keys.
