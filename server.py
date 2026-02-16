@@ -136,7 +136,7 @@ async def levelplay_report(
         page: Page number for pagination.
         results_per_page: Results per page.
     """
-    client: httpx.AsyncClient = ctx.lifespan_context["client"]
+    client: httpx.AsyncClient = ctx.request_context.lifespan_context["client"]
 
     params: dict[str, Any] = {
         "startDate": start_date,
@@ -160,7 +160,7 @@ async def levelplay_report(
 @mcp.tool(name="levelplay-apps")
 async def levelplay_apps(ctx: Context = None) -> dict:
     """List all apps on the LevelPlay account. Useful for discovering app keys."""
-    client: httpx.AsyncClient = ctx.lifespan_context["client"]
+    client: httpx.AsyncClient = ctx.request_context.lifespan_context["client"]
     return await _api_get(client, APPS_URL)
 
 
