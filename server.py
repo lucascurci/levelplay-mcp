@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
-from fastmcp import FastMCP
+from fastmcp import Context, FastMCP
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -123,6 +123,7 @@ async def levelplay_report(
     filters: dict[str, str] | None = None,
     page: int | None = None,
     results_per_page: int | None = None,
+    ctx: Context = None,
 ) -> dict:
     """Query the LevelPlay monetization reporting API.
 
@@ -135,7 +136,7 @@ async def levelplay_report(
         page: Page number for pagination.
         results_per_page: Results per page.
     """
-    client: httpx.AsyncClient = mcp.get_context().request_context["client"]
+    client: httpx.AsyncClient = ctx.lifespan_context["client"]
 
     params: dict[str, Any] = {
         "startDate": start_date,
@@ -157,9 +158,9 @@ async def levelplay_report(
 
 
 @mcp.tool(name="levelplay-apps")
-async def levelplay_apps() -> dict:
+async def levelplay_apps(ctx: Context = None) -> dict:
     """List all apps on the LevelPlay account. Useful for discovering app keys."""
-    client: httpx.AsyncClient = mcp.get_context().request_context["client"]
+    client: httpx.AsyncClient = ctx.lifespan_context["client"]
     return await _api_get(client, APPS_URL)
 
 
