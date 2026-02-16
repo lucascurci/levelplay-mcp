@@ -42,6 +42,22 @@ List all apps on the account. No parameters. Useful for discovering app keys.
 
 ## Setup
 
+### Getting your API credentials
+
+1. Log in to [Unity LevelPlay](https://app.unity.com/)
+2. Click the account icon at the bottom-left of the sidebar
+3. Go to **Account** > **API** tab
+4. Copy your **Secret Key** and **Refresh Token**
+
+> You need Contributor or Administrator permissions to access the API keys.
+
+Create a `.env` file in the project root:
+
+```
+LEVELPLAY_SECRET_KEY=your_secret_key_here
+LEVELPLAY_REFRESH_TOKEN=your_refresh_token_here
+```
+
 ### Environment variables
 
 | Variable | Description |
