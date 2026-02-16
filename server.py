@@ -101,7 +101,17 @@ async def lifespan(server):
         yield {"client": client}
 
 
-mcp = FastMCP("LevelPlay", lifespan=lifespan)
+mcp = FastMCP(
+    "LevelPlay",
+    instructions=(
+        "LevelPlay ad monetization reporting server. "
+        "Use levelplay-apps to discover app keys, "
+        "then levelplay-report to query revenue, impressions, eCPM, and other metrics "
+        "by date, app, country, ad format, ad network, and more. "
+        "Dates are YYYY-MM-DD. Metrics and breakdowns are comma-separated strings."
+    ),
+    lifespan=lifespan,
+)
 
 
 @mcp.tool(name="levelplay-report")
