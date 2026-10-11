@@ -13,7 +13,7 @@ LevelPlay uses 2-step bearer auth:
 1. `GET /partners/publisher/auth` with `secretkey` + `refreshToken` headers → raw JWT (24h validity)
 2. All subsequent requests use `Authorization: Bearer <jwt>`
 
-JWT is cached in module-level vars. Expiry is parsed from the JWT `exp` claim (base64-decoded payload). Auto-refreshes on expiry or 401.
+JWT is cached in module-level vars. Expiry is parsed from the JWT payload (base64-decoded): LevelPlay puts it in a non-standard `expirationTime` claim; the standard `exp` is accepted too. Auto-refreshes on expiry or 401.
 
 ## Tools
 
@@ -31,7 +31,7 @@ Lists all apps. `GET /partners/publisher/applications/v6`. No parameters.
 ## Design Decisions
 1. **Single file** — Two tools + auth ≈ 140 lines. No package needed.
 2. **httpx via lifespan** — Shared async client with connection pooling, cleaned up on shutdown.
-3. **JWT exp parsing** — Base64-decode the JWT payload to read `exp`. More robust than hardcoded TTL.
+3. **JWT expiry parsing** — Base64-decode the JWT payload to read the expiry: `exp` if present, otherwise `expirationTime`, which is the claim LevelPlay actually sends. More robust than hardcoded TTL.
 4. **401 retry** — On 401, clear cache, re-auth, retry once. Handles token invalidation mid-flight.
 5. **Env vars** — `LEVELPLAY_SECRET_KEY`, `LEVELPLAY_REFRESH_TOKEN` for auth. `FASTMCP_SERVER_HOST`/`FASTMCP_SERVER_PORT` for bind config.
 
