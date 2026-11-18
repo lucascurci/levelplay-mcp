@@ -3,7 +3,9 @@
 import base64
 import json
 import os
+import re
 import time
+from datetime import date, timedelta
 from typing import Any
 
 import httpx
@@ -78,19 +80,28 @@ async def _get_token() -> str:
 
 
 async def _api_get(url: str, params: dict[str, Any] | None = None) -> Any:
-    """GET with bearer auth. Retries once on 401."""
-    token = await _get_token()
-    client = _get_client()
+    """GET with bearer auth. Retries once on 401.
 
-    resp = await client.get(
-        url, params=params, headers={"Authorization": f"Bearer {token}"}
-    )
+    Network failures (timeouts, refused or dropped connections) come back as an error
+    dict naming the exception: an httpx timeout has an empty message, so raised it
+    reached the caller as a bare "Error calling tool".
+    """
+    try:
+        token = await _get_token()
+        client = _get_client()
 
-    if resp.status_code == 401:
-        token = await _authenticate()
         resp = await client.get(
             url, params=params, headers={"Authorization": f"Bearer {token}"}
         )
+
+        if resp.status_code == 401:
+            token = await _authenticate()
+            resp = await client.get(
+                url, params=params, headers={"Authorization": f"Bearer {token}"}
+            )
+    except httpx.HTTPError as e:
+        detail = str(e) or "no message"
+        return {"error": f"LevelPlay unreachable: {type(e).__name__} ({detail})"}
 
     if resp.status_code == 429:
         return {"error": "Rate limited (429). LevelPlay allows 8000 requests/hour."}
@@ -116,9 +127,77 @@ mcp = FastMCP(
         "Use levelplay-apps to discover app keys, "
         "then levelplay-report to query revenue, impressions, eCPM, and other metrics "
         "by date, app, country, ad format, ad network, and more. "
-        "Dates are YYYY-MM-DD. Metrics and breakdowns are comma-separated strings."
+        "Dates are YYYY-MM-DD. Metrics and breakdowns are comma-separated strings. "
+        "levelplay-collect is called by Celeste's collector, not in conversation: its daily "
+        "numbers are already in her fact store under levelplay/."
     ),
 )
+
+
+# ---------------------------------------------------------------------------
+# Collection — the standard fact shape for Celeste's collectors
+# ---------------------------------------------------------------------------
+
+COLLECT_METRICS = "revenue,activeUsers,revenuePerActiveUser,impressions,eCPM"
+COLLECT_PAGE_SIZE = 500
+
+
+def game_slug(app_name: str) -> str:
+    """One name per game across platforms: "Fluffy Fall: Fly Fast to Dodge (Android)" and
+    "Fluffy Fall (iOS)" are both "fluffy-fall"."""
+    name = re.sub(r"\s*\([^)]*\)\s*$", "", app_name or "")
+    name = name.split(":", 1)[0]
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+    return slug or "app"
+
+
+def rows_to_facts(rows: list) -> list:
+    """Report rows (date, app, platform) as facts: one per game, platform and day."""
+    found, owners = {}, {}
+    # Rows in app-key order: when two apps reduce to one name, the same one keeps the plain key
+    # on every run, whatever order the API answers in
+    for row in sorted(rows, key=lambda r: (str(r.get("appKey") or ""), str(r.get("date") or ""))):
+        platform = re.sub(r"[^a-z0-9]+", "-", str(row.get("platform") or "unknown").lower()).strip("-")
+        key = f"levelplay/{game_slug(row.get('appName', ''))}/{platform}"
+        app_key = row.get("appKey") or ""
+        if owners.setdefault(key, app_key) != app_key:
+            # two apps reduce to one name: keep them apart, in the lowercase a fact key allows
+            key = f"{key}-{re.sub(r'[^a-z0-9]+', '-', app_key.lower()).strip('-')}"
+        revenue, dau = row.get("revenue"), row.get("activeUsers")
+        found[(key, row["date"])] = {
+            "key": key, "date": row["date"],
+            # Computed: the API's revenuePerActiveUser is 100 times revenue / activeUsers
+            "data": {"revenue": revenue, "dau": dau,
+                     "arpdau": round(revenue / dau, 5) if revenue is not None and dau else None,
+                     "impressions": row.get("impressions"), "ecpm": row.get("eCPM"),
+                     "app_name": row.get("appName"), "app_key": app_key}}
+    return list(found.values())
+
+
+@mcp.tool(name="levelplay-collect")
+async def levelplay_collect(days: int = 3) -> dict:
+    """Daily numbers per game and platform for the last `days` full days (yesterday back),
+    as facts {key: "levelplay/{game}/{platform}", date, data: revenue, dau, arpdau,
+    impressions, ecpm}. Re-reading recent days catches LevelPlay's late revisions.
+
+    days: 1 to 31.
+    """
+    days = max(1, min(int(days), 31))
+    end = date.today() - timedelta(days=1)
+    start = end - timedelta(days=days - 1)
+    rows, page = [], 1
+    while True:
+        result = await _api_get(REPORT_URL, {
+            "startDate": start.isoformat(), "endDate": end.isoformat(),
+            "metrics": COLLECT_METRICS, "breakdowns": "date,app,platform",
+            "page": page, "resultsPerPage": COLLECT_PAGE_SIZE})
+        if not isinstance(result, dict) or "error" in result:
+            return result if isinstance(result, dict) else {"error": "unexpected answer", "details": str(result)[:300]}
+        rows.extend(result.get("data") or [])
+        if page * int(result.get("pageSize") or COLLECT_PAGE_SIZE) >= int(result.get("totalResults") or 0):
+            break
+        page += 1
+    return {"facts": rows_to_facts(rows)}
 
 
 @mcp.tool(name="levelplay-report")
